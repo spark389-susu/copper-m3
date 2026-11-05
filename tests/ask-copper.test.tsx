@@ -805,3 +805,107 @@ describe("Part C: askCopper", () => {
     expect(text).toContain("What does Copper Plus cost?");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Part D: the search_docs card
+// ---------------------------------------------------------------------------
+
+describe("Part D: the search_docs tool card", () => {
+  it("shows each passage as a link that opens its PDF at the right page", async () => {
+    vi.stubEnv("GOOGLE_GENERATIVE_AI_API_KEY", "AIza-test-key");
+    const results = [
+      {
+        title: "Copper Home User Guide",
+        page: 9,
+        text: "C-47 Microphone array fault. Unplug Copper Home for 30 seconds.",
+        url: "/docs/copper-home-user-guide.pdf#page=9",
+        score: 0.81,
+      },
+      {
+        title: "Copper Plus FAQ",
+        page: 5,
+        text: `A very long passage ${"word ".repeat(80)}`,
+        url: "/docs/copper-plus-faq.pdf#page=5",
+        score: 0.6,
+      },
+    ];
+    const askCopper = vi
+      .fn()
+      .mockResolvedValueOnce(
+        answered("C-47 is a microphone fault.", [
+          toolStep(
+            "search_docs",
+            { query: "C-47" },
+            { status: "ok", query: "C-47", results },
+          ),
+        ]),
+      );
+    vi.doMock("@/lib/copper/assistant/ask", () => ({ askCopper }));
+    await renderPage();
+    const section = await openChat();
+    const chat = within(section);
+
+    await ask(chat, "What does C-47 mean?");
+    await waitFor(() =>
+      expect(chat.getByText(/C-47 is a microphone fault/)).toBeInTheDocument(),
+    );
+
+    const card = section.querySelector<HTMLElement>(
+      '[data-testid="tool-call"][data-tool="search_docs"]',
+    )!;
+    expect(card, "the tool card is shown").not.toBeNull();
+    const inCard = within(card);
+    // What Copper sent: the question it searched for.
+    expect(inCard.getByText("query")).toBeVisible();
+    expect(card.textContent).toContain("C-47");
+    // What came back: title and page as a link that opens the PDF at that page.
+    const home = inCard.getByRole("link", {
+      name: "Copper Home User Guide, page 9",
+    });
+    expect(home).toHaveAttribute(
+      "href",
+      "/docs/copper-home-user-guide.pdf#page=9",
+    );
+    expect(home).toHaveAttribute("target", "_blank");
+    expect(home).toHaveAttribute("rel", expect.stringContaining("noopener"));
+    expect(
+      inCard.getByRole("link", { name: "Copper Plus FAQ, page 5" }),
+    ).toHaveAttribute("href", "/docs/copper-plus-faq.pdf#page=5");
+    // Each passage's text is shown, and a long one is cut short.
+    expect(card.textContent).toContain("Microphone array fault");
+    expect(card.textContent).toContain("…");
+    expect(card.textContent).not.toContain("word ".repeat(80));
+  });
+
+  it("says plainly when the documents can't be searched", async () => {
+    vi.stubEnv("GOOGLE_GENERATIVE_AI_API_KEY", "AIza-test-key");
+    const askCopper = vi.fn().mockResolvedValueOnce(
+      answered("I can't search the documents right now.", [
+        toolStep(
+          "search_docs",
+          { query: "reset Wi-Fi" },
+          {
+            status: "unavailable",
+            message: "The documents can't be searched right now.",
+          },
+        ),
+      ]),
+    );
+    vi.doMock("@/lib/copper/assistant/ask", () => ({ askCopper }));
+    await renderPage();
+    const section = await openChat();
+    const chat = within(section);
+
+    await ask(chat, "How do I reset Wi-Fi?");
+    await waitFor(() =>
+      expect(chat.getByText(/can't search the documents/)).toBeInTheDocument(),
+    );
+    const card = section.querySelector<HTMLElement>(
+      '[data-tool="search_docs"]',
+    )!;
+    expect(card.textContent).toContain(
+      "The documents can't be searched right now.",
+    );
+    expect(within(card).queryAllByRole("link")).toHaveLength(0);
+  });
+});

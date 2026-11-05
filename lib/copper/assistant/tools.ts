@@ -1,6 +1,7 @@
-// Module 2: the four tools Ask Copper can use. Products and prices come from
-// lib/copper/catalog.ts and stock from lib/copper/inventory.ts, so the
-// chatbot never has to make them up.
+// The tools Ask Copper can use. Products and prices come from
+// lib/copper/catalog.ts, stock from lib/copper/inventory.ts and everything in
+// the PDFs from lib/copper/search-docs.ts, so the chatbot never has to make
+// them up.
 // Each tool returns plain data; the model writes the reply around it.
 import { tool } from "ai";
 import { z } from "zod";
@@ -11,6 +12,7 @@ import {
   type ProductId,
 } from "@/lib/copper/catalog";
 import { readInventory } from "@/lib/copper/inventory";
+import { searchDocs } from "@/lib/copper/search-docs";
 
 export type ProductList = {
   products: {
@@ -177,6 +179,12 @@ export async function checkAvailability(
   };
 }
 
+export type SearchDocsInput = { query: string };
+
+export const searchDocsInput: z.ZodType<SearchDocsInput> = z
+  .object({ query: z.string().trim().min(1).max(300) })
+  .strict();
+
 export const copperTools = {
   get_products: tool({
     description:
@@ -200,5 +208,11 @@ export const copperTools = {
       "Checks today's stock for a Copper product, for every color or just one.",
     inputSchema: checkAvailabilityInput,
     execute: async (input) => checkAvailability(input),
+  }),
+  search_docs: tool({
+    description:
+      "Searches Copper's customer documents (the Copper Home and Copper Notes user guides, the terms and conditions and the Copper Plus FAQ) for setup, troubleshooting, warranty and policy questions, such as error codes, resets, refunds and cancellations. Returns the 5 closest passages, each with its document title, page number and a link that opens the PDF at that page.",
+    inputSchema: searchDocsInput,
+    execute: async ({ query }) => searchDocs(query),
   }),
 };

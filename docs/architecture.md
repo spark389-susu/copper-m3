@@ -92,7 +92,7 @@ each step. Module 3 teaches it to answer from the customer documents.
 |---|---|---|
 | Component | `components/copper/ask-copper.tsx` | The launcher and chat panel, mounted from `app/page.tsx` and opened by the header's `#ask` link. Draws each answer as stations: the tools on offer, thinking, each tool call, then the reply |
 | Server Action | `lib/copper/assistant/ask.ts` | `askCopper()`: streams the conversation with `callStream`, up to 5 steps, and sends each step back as a live `Progress` |
-| Tools | `lib/copper/assistant/tools.ts` | `copperTools`: `get_products`, `get_prices`, `calculate_cost`, `check_availability` |
+| Tools | `lib/copper/assistant/tools.ts` | `copperTools`: `get_products`, `get_prices`, `calculate_cost`, `check_availability`, and (Module 3) `search_docs` |
 | Instructions | `lib/copper/assistant/instructions.ts` | `COPPER_INSTRUCTIONS`. Copper says it can't help yet with warranty, setup, troubleshooting or privacy |
 | Data | `lib/copper/inventory.ts`, `lib/copper/documents.ts` | Stock from `lib/copper/data/inventory.json`; `DOCUMENTS`: the four customer documents and their PDF paths under `public/docs/`. The PDFs are added in class |
 | AI calls | `{ module: 2, feature: "ask-copper" }` | One streamed call per question |
@@ -102,7 +102,7 @@ each step. Module 3 teaches it to answer from the customer documents.
 **Summary:** The four PDFs in `public/docs/` are cut into short passages and
 turned into embeddings (a list of numbers that stands for what a passage
 means), saved in one JSON file the app loads into memory when it starts.
-Nothing searches them yet.
+Ask Copper searches them with the `search_docs` tool (below).
 
 | Piece | Where | What it does |
 |---|---|---|
@@ -111,3 +111,11 @@ Nothing searches them yet.
 | Saved passages | `lib/copper/data/passages.json`, `lib/copper/passages.ts` | `PASSAGES`: `id`, `documentId`, `title`, PDF `page` (first page is 1), `text` and a 768-number `embedding` of length 1. The file also records the model and size |
 | Embedding call | `callEmbed` in `lib/ai/call.ts` | Embeds a list of texts with `gemini-embedding-001`, as `"document"` or `"query"`. Logged to `ai_calls` with no cost, because embeddings aren't in the price list |
 | AI calls | `{ module: 3, feature: "embed-docs" }` | One batched call per run of the script |
+| Search | `lib/copper/search-docs.ts` | `searchDocs(query)`: embeds the question with `callEmbed` (as a `"query"`), scores every passage in memory by how close its numbers are, and returns the 5 closest, each with its title, page, text, a `score` and a `url` that opens the PDF at that page (`/docs/<id>.pdf#page=N`) |
+| Tool | `search_docs` in `lib/copper/assistant/tools.ts` | Takes `{ query }` (1 to 300 characters) and returns `searchDocs`'s answer. `COPPER_INSTRUCTIONS` tells Copper to use it for setup, troubleshooting, warranty and policy questions, to answer only from the passages and to name the document and page |
+| Tool card | `ToolOutput` in `components/copper/ask-copper.tsx` | Shows the 5 passages as numbered links, "Document title, page N", that open the PDF in a new tab, each with a short excerpt |
+| AI calls | `{ module: 3, feature: "search-docs" }` | One embedding call per search, plus the usual `ask-copper` call |
+
+Exact codes are the weak spot: a search for "C-47" finds the right page, but the
+scores are nearly tied, because an embedding captures meaning rather than exact
+characters.
