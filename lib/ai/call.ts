@@ -1,7 +1,12 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { generateText, Output, streamText } from "ai";
+import { embedMany, generateText, Output, streamText } from "ai";
 import type { z } from "zod";
-import { defaultModel, MODELS, type ModelId } from "@/lib/ai/models";
+import {
+  defaultModel,
+  EMBEDDING_MODEL,
+  MODELS,
+  type ModelId,
+} from "@/lib/ai/models";
 import { costUsd } from "@/lib/ai/pricing";
 
 // Every model call in the app goes through this file, so each one is logged
@@ -36,7 +41,7 @@ type TextOptions = DistributiveOmit<
 export type AiCallRow = {
   module: number;
   feature: string;
-  model: ModelId;
+  model: ModelId | typeof EMBEDDING_MODEL.id;
   input_tokens: number | null;
   output_tokens: number | null;
   cost_usd: number | null;
@@ -45,15 +50,20 @@ export type AiCallRow = {
   created_at: string;
 };
 
-function languageModel(model: ModelId) {
+function googleProvider() {
   const googleKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim();
   if (!googleKey) throw new AiNotConfiguredError();
+  return createGoogleGenerativeAI({ apiKey: googleKey });
+}
+
+function languageModel(model: ModelId) {
+  const provider = googleProvider();
   const entry = MODELS.find((m) => m.id === model);
   const id =
     entry && "googleId" in entry
       ? entry.googleId
       : model.slice("google/".length);
-  return createGoogleGenerativeAI({ apiKey: googleKey })(id);
+  return provider(id);
 }
 
 /** Prints one line per model call, so the cost and time are visible. */
@@ -158,3 +168,56 @@ const THINKING = { includeThoughts: true, thinkingBudget: 1024 };
 export const THOUGHT_SUMMARIES = {
   google: { thinkingConfig: THINKING },
 };
+
+type EmbedOptions = {
+  /** "document" for text that will be searched, "query" for a question. */
+  kind: "document" | "query";
+  /** How many numbers each embedding has. Fewer means a smaller file. */
+  dimensions: number;
+};
+
+/**
+ * Turns each text into an embedding (a list of numbers that stands for its
+ * meaning), in the same order. Logged to ai_calls like any other call; the cost
+ * is left blank because embeddings aren't in the price list.
+ * Example: callEmbed({ module: 3, feature: "embed-docs" }, texts, { kind: "document", dimensions: 768 })
+ */
+export async function callEmbed(
+  info: Omit<CallInfo, "model">,
+  values: string[],
+  { kind, dimensions }: EmbedOptions,
+): Promise<{ embeddings: number[][]; tokens: number | null }> {
+  const started = performance.now();
+  const row = (ok: boolean, tokens: number | null): AiCallRow => ({
+    module: info.module,
+    feature: info.feature,
+    model: EMBEDDING_MODEL.id,
+    input_tokens: tokens,
+    output_tokens: null,
+    cost_usd: null,
+    latency_ms: Math.round(performance.now() - started),
+    ok,
+    created_at: new Date().toISOString(),
+  });
+  const provider = googleProvider();
+  try {
+    const { embeddings, usage } = await embedMany({
+      model: provider.embedding(EMBEDDING_MODEL.googleId),
+      values,
+      providerOptions: {
+        google: {
+          outputDimensionality: dimensions,
+          taskType:
+            kind === "document" ? "RETRIEVAL_DOCUMENT" : "RETRIEVAL_QUERY",
+        },
+      },
+    });
+    // Google doesn't report tokens for embeddings, and the sum then comes out as NaN.
+    const tokens = Number.isFinite(usage.tokens) ? usage.tokens : null;
+    await logCall(row(true, tokens));
+    return { embeddings, tokens };
+  } catch (error) {
+    await logCall(row(false, null));
+    throw error;
+  }
+}

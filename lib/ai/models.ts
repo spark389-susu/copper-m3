@@ -17,6 +17,15 @@ export const MODELS = [
 export type ModelId = (typeof MODELS)[number]["id"];
 
 /**
+ * The model that turns text into an embedding: a long list of numbers that
+ * stands for what the text means. It writes no text, so it isn't in MODELS.
+ */
+export const EMBEDDING_MODEL = {
+  id: "google/gemini-embedding-001",
+  googleId: "gemini-embedding-001",
+} as const;
+
+/**
  * The model used when a call doesn't name one. 2.5 Flash writes a summary of
  * its thinking for every question, which Ask Copper shows students.
  */

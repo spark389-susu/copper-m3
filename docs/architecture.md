@@ -96,3 +96,18 @@ each step. Module 3 teaches it to answer from the customer documents.
 | Instructions | `lib/copper/assistant/instructions.ts` | `COPPER_INSTRUCTIONS`. Copper says it can't help yet with warranty, setup, troubleshooting or privacy |
 | Data | `lib/copper/inventory.ts`, `lib/copper/documents.ts` | Stock from `lib/copper/data/inventory.json`; `DOCUMENTS`: the four customer documents and their PDF paths under `public/docs/`. The PDFs are added in class |
 | AI calls | `{ module: 2, feature: "ask-copper" }` | One streamed call per question |
+
+## Module 3: the documents as searchable passages
+
+**Summary:** The four PDFs in `public/docs/` are cut into short passages and
+turned into embeddings (a list of numbers that stands for what a passage
+means), saved in one JSON file the app loads into memory when it starts.
+Nothing searches them yet.
+
+| Piece | Where | What it does |
+|---|---|---|
+| Script | `scripts/embed-docs.ts` (`npm run embed-docs`) | Reads each PDF page by page, cuts each page into passages with `splitPage`, embeds them with `callEmbed`, and writes `lib/copper/data/passages.json`. Run it again when a PDF changes |
+| Splitter | `lib/copper/split-passages.ts` | `splitPage()`: up to 4 sentences (about 700 characters) per passage. Every passage's text starts with its document title |
+| Saved passages | `lib/copper/data/passages.json`, `lib/copper/passages.ts` | `PASSAGES`: `id`, `documentId`, `title`, PDF `page` (first page is 1), `text` and a 768-number `embedding` of length 1. The file also records the model and size |
+| Embedding call | `callEmbed` in `lib/ai/call.ts` | Embeds a list of texts with `gemini-embedding-001`, as `"document"` or `"query"`. Logged to `ai_calls` with no cost, because embeddings aren't in the price list |
+| AI calls | `{ module: 3, feature: "embed-docs" }` | One batched call per run of the script |
