@@ -112,10 +112,16 @@ Ask Copper searches them with the `search_docs` tool (below).
 | Embedding call | `callEmbed` in `lib/ai/call.ts` | Embeds a list of texts with `gemini-embedding-001`, as `"document"` or `"query"`. Logged to `ai_calls` with no cost, because embeddings aren't in the price list |
 | AI calls | `{ module: 3, feature: "embed-docs" }` | One batched call per run of the script |
 | Search | `lib/copper/search-docs.ts` | `searchDocs(query)`: embeds the question with `callEmbed` (as a `"query"`), scores every passage in memory by how close its numbers are, and returns the 5 closest, each with its title, page, text, a `score` and a `url` that opens the PDF at that page (`/docs/<id>.pdf#page=N`) |
-| Tool | `search_docs` in `lib/copper/assistant/tools.ts` | Takes `{ query }` (1 to 300 characters) and returns `searchDocs`'s answer. `COPPER_INSTRUCTIONS` tells Copper to use it for setup, troubleshooting, warranty and policy questions, to answer only from the passages and to name the document and page |
+| Tool | `search_docs` in `lib/copper/assistant/tools.ts` | Takes `{ query }` (1 to 300 characters) and returns `searchDocs`'s answer. `COPPER_INSTRUCTIONS` tells Copper to use it for setup, troubleshooting, warranty and policy questions, to answer only from the passages, to end every sentence with a citation like `[Copper Home User Guide, p. 9]`, and to reply "I couldn't find that in our support docs" (and suggest the Copper Crew) when the passages don't answer |
 | Tool card | `ToolOutput` in `components/copper/ask-copper.tsx` | Shows the 5 passages as numbered links, "Document title, page N", that open the PDF in a new tab, each with a short excerpt |
 | AI calls | `{ module: 3, feature: "search-docs" }` | One embedding call per search, plus the usual `ask-copper` call |
 
 Exact codes are the weak spot: a search for "C-47" finds the right page, but the
 scores are nearly tied, because an embedding captures meaning rather than exact
 characters.
+
+Citations: Copper writes each source as `[Document title, p. N]`. `ReplyText` in
+`components/copper/ask-copper.tsx` turns every citation of a real document into
+a link that opens that PDF page. The link is built from `DOCUMENTS`, not taken
+from the model, so a made-up title stays plain text and a link the model adds
+itself is ignored.

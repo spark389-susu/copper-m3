@@ -909,3 +909,66 @@ describe("Part D: the search_docs tool card", () => {
     expect(within(card).queryAllByRole("link")).toHaveLength(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Part E: citations in Copper's reply
+// ---------------------------------------------------------------------------
+
+/** Sends one question that Copper answers with `reply`, and returns the chat. */
+async function chatWithReply(reply: string) {
+  vi.stubEnv("GOOGLE_GENERATIVE_AI_API_KEY", "AIza-test-key");
+  const askCopper = vi.fn().mockResolvedValueOnce(answered(reply));
+  vi.doMock("@/lib/copper/assistant/ask", () => ({ askCopper }));
+  await renderPage();
+  const section = await openChat();
+  const chat = within(section);
+  await ask(chat, "What does C-47 mean?");
+  return { chat, section };
+}
+
+describe("Part E: citations in Copper's reply", () => {
+  it("turns each citation into a link that opens that PDF page", async () => {
+    const { chat, section } = await chatWithReply(
+      "It is a microphone fault [Copper Home User Guide, p. 9]. Contact us if it stays [Copper Plus FAQ, p. 5].",
+    );
+    const home = await chat.findByRole("link", {
+      name: "[Copper Home User Guide, p. 9]",
+    });
+    expect(home).toHaveAttribute(
+      "href",
+      "/docs/copper-home-user-guide.pdf#page=9",
+    );
+    expect(home).toHaveAttribute("target", "_blank");
+    expect(home).toHaveAttribute("rel", expect.stringContaining("noopener"));
+    expect(
+      chat.getByRole("link", { name: "[Copper Plus FAQ, p. 5]" }),
+    ).toHaveAttribute("href", "/docs/copper-plus-faq.pdf#page=5");
+    // The words around the citations are still there.
+    expect(section.textContent).toContain("It is a microphone fault");
+    expect(section.textContent).toContain("Contact us if it stays");
+  });
+
+  it("ignores any link the model adds, and only opens our own PDFs", async () => {
+    const { chat, section } = await chatWithReply(
+      "Unplug it [Copper Home User Guide, p. 9](https://evil.example/phish).",
+    );
+    const link = await chat.findByRole("link", {
+      name: "[Copper Home User Guide, p. 9]",
+    });
+    expect(link).toHaveAttribute(
+      "href",
+      "/docs/copper-home-user-guide.pdf#page=9",
+    );
+    expect(section.innerHTML).not.toContain("evil.example");
+  });
+
+  it("leaves a citation of a document that doesn't exist as plain text", async () => {
+    const { chat, section } = await chatWithReply(
+      "Press the button [Some Made Up Guide, p. 3].",
+    );
+    await waitFor(() =>
+      expect(chat.getByText(/Some Made Up Guide, p\. 3/)).toBeInTheDocument(),
+    );
+    expect(section.querySelectorAll('a[href*="/docs/"]')).toHaveLength(0);
+  });
+});

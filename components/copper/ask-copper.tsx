@@ -34,6 +34,7 @@ import {
   TOOL_LABELS,
 } from "@/lib/copper/assistant/progress";
 import { formatUsd, getPlans, getProducts } from "@/lib/copper/catalog";
+import { DOCUMENTS } from "@/lib/copper/documents";
 import { cn } from "@/lib/utils";
 
 const STARTERS = [
@@ -383,7 +384,7 @@ function Answer({
             </div>
           )}
           <p className="text-sm whitespace-pre-wrap">
-            {reply}
+            <ReplyText text={reply} />
             {working && (
               <span className="bg-primary ml-0.5 inline-block h-4 w-0.5 animate-pulse align-middle" />
             )}
@@ -421,6 +422,36 @@ function Station({
       {children}
     </section>
   );
+}
+
+// Copper cites its sources like [Copper Home User Guide, p. 9]. If the model
+// also adds a (link) after it, that link is ignored: the one shown is built from
+// our own document list, so it can only open one of our PDFs.
+const CITATION = /\[([^[\]]+?), p\. (\d+)\](?:\([^)]*\))?/g;
+
+/** Copper's reply, with each citation of a real document as a link to that PDF page. */
+function ReplyText({ text }: { text: string }) {
+  const parts: ReactNode[] = [];
+  let from = 0;
+  for (const match of text.matchAll(CITATION)) {
+    const doc = DOCUMENTS.find((d) => d.title === match[1].trim());
+    if (!doc) continue;
+    parts.push(text.slice(from, match.index));
+    parts.push(
+      <a
+        key={match.index}
+        href={`${doc.file}#page=${match[2]}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-primary font-medium underline underline-offset-2"
+      >
+        [{doc.title}, p. {match[2]}]
+      </a>,
+    );
+    from = match.index + match[0].length;
+  }
+  parts.push(text.slice(from));
+  return <>{parts}</>;
 }
 
 /** Thought summaries arrive as markdown: render **bold** and `code`. */
